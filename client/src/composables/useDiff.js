@@ -2,11 +2,19 @@ export function useDiff() {
   function computeLineDiff(textA, textB) {
     const linesA = (textA || '').split('\n')
     const linesB = (textB || '').split('\n')
-    const result = []
 
-    // Simple LCS-based diff
+    if (linesA.length === 1 && linesA[0] === '' && linesB.length === 1 && linesB[0] === '') {
+      return []
+    }
+
     const m = linesA.length
     const n = linesB.length
+
+    // For very large diffs, fall back to simple sequential comparison
+    if (m * n > 1000000) {
+      return simpleDiff(linesA, linesB)
+    }
+
     const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0))
 
     for (let i = 1; i <= m; i++) {
@@ -19,18 +27,17 @@ export function useDiff() {
       }
     }
 
-    // Backtrack to find diff
     const diff = []
     let i = m, j = n
     while (i > 0 || j > 0) {
       if (i > 0 && j > 0 && linesA[i - 1] === linesB[j - 1]) {
-        diff.unshift({ type: 'equal', value: linesA[i - 1], lineA: i, lineB: j })
+        diff.unshift({ type: 'equal', value: linesA[i - 1] })
         i--; j--
       } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-        diff.unshift({ type: 'added', value: linesB[j - 1], lineB: j })
+        diff.unshift({ type: 'added', value: linesB[j - 1] })
         j--
       } else {
-        diff.unshift({ type: 'removed', value: linesA[i - 1], lineA: i })
+        diff.unshift({ type: 'removed', value: linesA[i - 1] })
         i--
       }
     }
@@ -38,13 +45,33 @@ export function useDiff() {
     return diff
   }
 
+  function simpleDiff(linesA, linesB) {
+    const result = []
+    const maxLen = Math.max(linesA.length, linesB.length)
+    for (let i = 0; i < maxLen; i++) {
+      const a = i < linesA.length ? linesA[i] : undefined
+      const b = i < linesB.length ? linesB[i] : undefined
+      if (a === b) {
+        result.push({ type: 'equal', value: a })
+      } else {
+        if (a !== undefined) result.push({ type: 'removed', value: a })
+        if (b !== undefined) result.push({ type: 'added', value: b })
+      }
+    }
+    return result
+  }
+
   function computeWordDiff(textA, textB) {
     const wordsA = (textA || '').split(/(\s+)/)
     const wordsB = (textB || '').split(/(\s+)/)
-    const result = []
 
     const m = wordsA.length
     const n = wordsB.length
+
+    if (m * n > 500000) {
+      return simpleDiff(wordsA, wordsB)
+    }
+
     const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0))
 
     for (let i = 1; i <= m; i++) {
@@ -57,6 +84,7 @@ export function useDiff() {
       }
     }
 
+    const result = []
     let i = m, j = n
     while (i > 0 || j > 0) {
       if (i > 0 && j > 0 && wordsA[i - 1] === wordsB[j - 1]) {

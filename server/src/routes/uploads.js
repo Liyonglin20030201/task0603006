@@ -1,23 +1,32 @@
 const { Router } = require('express');
-const path = require('path');
 const auth = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const uploadService = require('../services/uploadService');
 
 const router = Router();
 
-router.post('/documents/:id/uploads', auth, upload.single('file'), (req, res, next) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: 'No file provided' });
-    const result = uploadService.upload(req.user.id, req.params.id, req.file);
-    res.status(201).json(result);
-  } catch (err) { next(err); }
+router.post('/documents/:id/uploads', auth, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File too large. Maximum size is 10MB.' });
+      }
+      return res.status(400).json({ message: err.message || 'Upload failed' });
+    }
+    try {
+      if (!req.file) return res.status(400).json({ message: 'No file provided' });
+      const result = uploadService.upload(req.user.id, req.params.id, req.file);
+      res.status(201).json(result);
+    } catch (e) { next(e); }
+  });
 });
 
 router.get('/uploads/:filename', (req, res, next) => {
   try {
     const { filePath, record } = uploadService.getFile(req.params.filename);
-    res.setHeader('Content-Type', record?.mime_type || 'application/octet-stream');
+    const contentType = record?.mime_type || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.sendFile(filePath);
   } catch (err) { next(err); }
 });

@@ -2,23 +2,31 @@
   <div class="diff-panel">
     <div class="diff-header">
       <h3>Version Comparison</h3>
-      <button class="close-btn" @click="$emit('close')">×</button>
+      <button class="close-btn" @click="$emit('close')" title="Close">×</button>
     </div>
 
-    <div class="diff-selectors">
-      <div class="selector">
-        <label>Version A:</label>
-        <select v-model="selectedA" @change="loadDiff">
-          <option value="">Select version</option>
-          <option v-for="v in versions" :key="v.id" :value="v.id">v{{ v.version_number }} - {{ v.title }}</option>
-        </select>
-      </div>
-      <div class="selector">
-        <label>Version B:</label>
-        <select v-model="selectedB" @change="loadDiff">
-          <option value="">Select version</option>
-          <option v-for="v in versions" :key="v.id" :value="v.id">v{{ v.version_number }} - {{ v.title }}</option>
-        </select>
+    <div class="diff-controls">
+      <div class="diff-selectors">
+        <div class="selector">
+          <label>Base (older):</label>
+          <select v-model="selectedA" @change="loadDiff">
+            <option value="">-- Select --</option>
+            <option v-for="v in versions" :key="v.id" :value="v.id">
+              v{{ v.version_number }} · {{ v.title }}
+            </option>
+          </select>
+        </div>
+        <span class="arrow">→</span>
+        <div class="selector">
+          <label>Compare (newer):</label>
+          <select v-model="selectedB" @change="loadDiff">
+            <option value="">-- Select --</option>
+            <option value="__current__">Current Document</option>
+            <option v-for="v in versions" :key="v.id" :value="v.id">
+              v{{ v.version_number }} · {{ v.title }}
+            </option>
+          </select>
+        </div>
       </div>
       <div class="view-toggle">
         <button :class="{ active: viewMode === 'unified' }" @click="viewMode = 'unified'">Unified</button>
@@ -26,41 +34,44 @@
       </div>
     </div>
 
-    <div v-if="loading" class="loading">Computing diff...</div>
+    <div v-if="loading" class="status-msg">Loading...</div>
 
     <div v-else-if="diffResult.length > 0" class="diff-content">
-      <!-- Unified view -->
+      <div class="diff-stats">
+        <span class="stat added">+{{ addedCount }} added</span>
+        <span class="stat removed">-{{ removedCount }} removed</span>
+      </div>
+
       <div v-if="viewMode === 'unified'" class="diff-unified">
         <div v-for="(line, idx) in diffResult" :key="idx" class="diff-line" :class="line.type">
           <span class="line-prefix">{{ line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ' }}</span>
-          <span class="line-content">{{ line.value }}</span>
+          <span class="line-content">{{ line.value || ' ' }}</span>
         </div>
       </div>
 
-      <!-- Split view -->
       <div v-else class="diff-split">
-        <div class="split-left">
-          <div class="split-header">Version A</div>
+        <div class="split-pane split-left">
+          <div class="split-label">Base</div>
           <div v-for="(line, idx) in splitLeft" :key="idx" class="diff-line" :class="line.type">
             <span class="line-num">{{ line.lineNum || '' }}</span>
-            <span class="line-content">{{ line.value }}</span>
+            <span class="line-content">{{ line.value || ' ' }}</span>
           </div>
         </div>
-        <div class="split-right">
-          <div class="split-header">Version B</div>
+        <div class="split-pane split-right">
+          <div class="split-label">Compare</div>
           <div v-for="(line, idx) in splitRight" :key="idx" class="diff-line" :class="line.type">
             <span class="line-num">{{ line.lineNum || '' }}</span>
-            <span class="line-content">{{ line.value }}</span>
+            <span class="line-content">{{ line.value || ' ' }}</span>
           </div>
         </div>
       </div>
     </div>
 
-    <div v-else-if="selectedA && selectedB" class="empty">
-      <p>No differences found.</p>
+    <div v-else-if="selectedA && selectedB && !loading" class="status-msg">
+      No differences found between these versions.
     </div>
-    <div v-else class="empty">
-      <p>Select two versions to compare.</p>
+    <div v-else class="status-msg hint">
+      Select two versions above to compare their content.
     </div>
   </div>
 </template>
@@ -72,7 +83,8 @@ import { useDiff } from '../../composables/useDiff.js'
 
 const props = defineProps({
   documentId: String,
-  versions: Array
+  versions: Array,
+  currentText: { type: String, default: '' }
 })
 
 defineEmits(['close'])
@@ -85,15 +97,36 @@ const viewMode = ref('unified')
 const diffResult = ref([])
 const loading = ref(false)
 
+const addedCount = computed(() => diffResult.value.filter(l => l.type === 'added').length)
+const removedCount = computed(() => diffResult.value.filter(l => l.type === 'removed').length)
+
 async function loadDiff() {
   if (!selectedA.value || !selectedB.value) {
     diffResult.value = []
     return
   }
+  if (selectedA.value === selectedB.value) {
+    diffResult.value = []
+    return
+  }
+
   loading.value = true
   try {
-    const { data } = await documentsApi.compareVersions(props.documentId, selectedA.value, selectedB.value)
-    diffResult.value = computeLineDiff(data.versionA.content_text, data.versionB.content_text)
+    let textA, textB
+
+    if (selectedB.value === '__current__') {
+      const { data } = await documentsApi.getVersion(props.documentId, selectedA.value)
+      textA = data.content_text || ''
+      textB = props.currentText || ''
+    } else {
+      const { data } = await documentsApi.compareVersions(props.documentId, selectedA.value, selectedB.value)
+      textA = data.versionA.content_text || ''
+      textB = data.versionB.content_text || ''
+    }
+
+    diffResult.value = computeLineDiff(textA, textB)
+  } catch (err) {
+    diffResult.value = []
   } finally {
     loading.value = false
   }
@@ -136,113 +169,161 @@ const splitRight = computed(() => {
 
 <style scoped>
 .diff-panel {
-  padding: 1rem;
-  height: 100%;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  background: white;
 }
 .diff-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--gray-200);
 }
-.diff-header h3 { font-size: 0.95rem; font-weight: 600; }
+.diff-header h3 { font-size: 1rem; font-weight: 600; margin: 0; }
 .close-btn {
   background: none;
   border: none;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   cursor: pointer;
-  color: var(--gray-500);
+  color: var(--gray-400);
+  line-height: 1;
+  padding: 0.25rem;
+}
+.close-btn:hover { color: var(--gray-700); }
+.diff-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--gray-100);
+  flex-wrap: wrap;
 }
 .diff-selectors {
   display: flex;
-  gap: 0.75rem;
   align-items: flex-end;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
+  flex: 1;
+}
+.arrow {
+  font-size: 1.1rem;
+  color: var(--gray-400);
+  padding-bottom: 0.35rem;
 }
 .selector {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
 }
-.selector label { font-size: 0.75rem; color: var(--gray-600); font-weight: 500; }
+.selector label {
+  font-size: 0.7rem;
+  color: var(--gray-500);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 .selector select {
-  padding: 0.35rem 0.5rem;
+  padding: 0.4rem 0.5rem;
   border: 1px solid var(--gray-300);
   border-radius: var(--radius);
   font-size: 0.8rem;
+  width: 100%;
+  background: white;
 }
 .view-toggle {
   display: flex;
-  gap: 2px;
+  flex-shrink: 0;
 }
 .view-toggle button {
-  padding: 0.35rem 0.6rem;
+  padding: 0.4rem 0.75rem;
   font-size: 0.75rem;
+  font-weight: 500;
   border: 1px solid var(--gray-300);
   background: white;
   cursor: pointer;
+  color: var(--gray-600);
 }
 .view-toggle button:first-child { border-radius: var(--radius) 0 0 var(--radius); }
-.view-toggle button:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.view-toggle button:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
 .view-toggle button.active { background: var(--primary); color: white; border-color: var(--primary); }
 .diff-content {
   flex: 1;
   overflow-y: auto;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius);
-  font-family: monospace;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
   font-size: 0.8rem;
+  line-height: 1.5;
 }
-.diff-unified { padding: 0.5rem; }
+.diff-stats {
+  display: flex;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.stat.added { color: #16a34a; }
+.stat.removed { color: #dc2626; }
+.diff-unified { padding: 0; }
 .diff-line {
   display: flex;
-  padding: 0.1rem 0.5rem;
-  white-space: pre-wrap;
-  word-break: break-all;
+  padding: 0 1rem;
+  min-height: 1.5em;
 }
 .diff-line.added { background: #dcfce7; }
 .diff-line.removed { background: #fee2e2; }
-.diff-line.empty { background: var(--gray-50); }
+.diff-line.empty { background: var(--gray-50); min-height: 1.5em; }
 .line-prefix {
   width: 1.5rem;
   flex-shrink: 0;
   color: var(--gray-400);
-  font-weight: 600;
+  font-weight: 700;
+  user-select: none;
 }
 .line-num {
-  width: 2.5rem;
+  width: 3rem;
   flex-shrink: 0;
   color: var(--gray-400);
   text-align: right;
-  padding-right: 0.5rem;
+  padding-right: 0.75rem;
+  user-select: none;
 }
-.line-content { flex: 1; }
+.line-content {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .diff-split {
   display: flex;
   height: 100%;
 }
-.split-left, .split-right {
+.split-pane {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem;
 }
 .split-left { border-right: 1px solid var(--gray-200); }
-.split-header {
+.split-label {
+  position: sticky;
+  top: 0;
   font-weight: 600;
-  font-size: 0.75rem;
-  color: var(--gray-600);
-  padding: 0.25rem 0.5rem;
-  margin-bottom: 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  padding: 0.4rem 1rem;
   background: var(--gray-50);
-  border-radius: var(--radius);
+  border-bottom: 1px solid var(--gray-100);
+  z-index: 1;
 }
-.loading, .empty {
-  text-align: center;
+.status-msg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--gray-400);
-  font-size: 0.85rem;
-  padding: 2rem;
+  font-size: 0.9rem;
 }
+.status-msg.hint { font-style: italic; }
 </style>

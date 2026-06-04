@@ -4,8 +4,7 @@ const fs = require('fs');
 const db = require('../db/connection');
 const { NotFoundError, ForbiddenError } = require('../utils/errors');
 const documentService = require('./documentService');
-
-const UPLOAD_DIR = path.join(__dirname, '../../data/uploads');
+const { UPLOAD_DIR } = require('../middleware/upload');
 
 function upload(userId, documentId, file) {
   if (documentId) {
@@ -16,7 +15,7 @@ function upload(userId, documentId, file) {
   db.prepare(`
     INSERT INTO uploads (id, filename, original_name, mime_type, size, document_id, uploaded_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, file.filename, file.originalname, file.mimetype, file.size, documentId, userId);
+  `).run(id, file.filename, file.originalname, file.mimetype, file.size, documentId || null, userId);
 
   return {
     id,
@@ -29,10 +28,12 @@ function upload(userId, documentId, file) {
 }
 
 function getFile(filename) {
-  const filePath = path.join(UPLOAD_DIR, filename);
+  const safeName = path.basename(filename);
+  const filePath = path.resolve(UPLOAD_DIR, safeName);
+  if (!filePath.startsWith(UPLOAD_DIR)) throw new ForbiddenError('Invalid path');
   if (!fs.existsSync(filePath)) throw new NotFoundError('File not found');
 
-  const record = db.prepare('SELECT * FROM uploads WHERE filename = ?').get(filename);
+  const record = db.prepare('SELECT * FROM uploads WHERE filename = ?').get(safeName);
   return { filePath, record };
 }
 
@@ -41,7 +42,7 @@ function deleteFile(fileId, userId) {
   if (!record) throw new NotFoundError('File not found');
   if (record.uploaded_by !== userId) throw new ForbiddenError('Only the uploader can delete this file');
 
-  const filePath = path.join(UPLOAD_DIR, record.filename);
+  const filePath = path.resolve(UPLOAD_DIR, record.filename);
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   db.prepare('DELETE FROM uploads WHERE id = ?').run(fileId);
 }

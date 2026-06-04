@@ -22,7 +22,7 @@ const emit = defineEmits(['close', 'export'])
 
 function handleExport(format) {
   emit('export', format)
-  if (format !== 'pdf') emit('close')
+  emit('close')
 }
 </script>
 

@@ -42,7 +42,7 @@
             @export="handleExport"
           />
         </div>
-        <button class="btn-secondary btn-sm" @click="showVersions = !showVersions">Versions</button>
+        <button class="btn-secondary btn-sm" @click="toggleVersions">Versions</button>
         <button class="btn-secondary btn-sm" @click="showComments = !showComments">Comments</button>
         <button v-if="isOwner" class="btn-secondary btn-sm" @click="showShare = true">Share</button>
         <button v-if="isOwner" class="btn-secondary btn-sm" @click="showApproval = !showApproval">Approval</button>
@@ -52,7 +52,8 @@
     </div>
 
     <div class="doc-body">
-      <div class="editor-area">
+      <!-- Main content area: Editor or Diff -->
+      <div class="editor-area" v-show="!showDiff">
         <DocumentEditor
           v-if="ydoc"
           ref="editorRef"
@@ -65,6 +66,17 @@
         />
       </div>
 
+      <!-- Full-width diff view replaces editor area -->
+      <div class="diff-area" v-if="showDiff">
+        <VersionDiffView
+          :documentId="doc.id"
+          :versions="versionsList"
+          :currentText="currentEditorText"
+          @close="showDiff = false"
+        />
+      </div>
+
+      <!-- Side panels -->
       <CommentSidebar
         v-if="showComments"
         :documentId="doc.id"
@@ -72,10 +84,15 @@
       />
 
       <div v-if="showVersions" class="version-panel-wrapper">
-        <VersionHistory :documentId="doc.id" @restored="handleVersionRestore" />
+        <VersionHistory
+          ref="versionHistoryRef"
+          :documentId="doc.id"
+          @restored="handleVersionRestore"
+          @toggle-diff="toggleDiff"
+        />
       </div>
 
-      <div v-if="showApproval" class="approval-panel-wrapper">
+      <div v-if="showApproval" class="side-panel-wrapper">
         <ApprovalPanel :documentId="doc.id" />
       </div>
     </div>
@@ -110,6 +127,7 @@ import DocumentEditor from '../components/editor/DocumentEditor.vue'
 import CommentSidebar from '../components/editor/CommentSidebar.vue'
 import ExportMenu from '../components/editor/ExportMenu.vue'
 import VersionHistory from '../components/documents/VersionHistory.vue'
+import VersionDiffView from '../components/documents/VersionDiffView.vue'
 import ShareDialog from '../components/documents/ShareDialog.vue'
 import SaveAsTemplateDialog from '../components/templates/SaveAsTemplateDialog.vue'
 import SubmitApprovalDialog from '../components/approvals/SubmitApprovalDialog.vue'
@@ -129,7 +147,9 @@ const showExport = ref(false)
 const showApproval = ref(false)
 const showSubmitApproval = ref(false)
 const showSaveTemplate = ref(false)
+const showDiff = ref(false)
 const editorRef = ref(null)
+const versionHistoryRef = ref(null)
 
 const isOwner = computed(() => doc.value?.owner_id === authStore.user?.id)
 const canEdit = computed(() => {
@@ -140,6 +160,9 @@ const canComment = computed(() => {
   if (isOwner.value) return true
   return ['comment', 'edit'].includes(doc.value?.my_permission)
 })
+
+const versionsList = computed(() => versionHistoryRef.value?.versions || [])
+const currentEditorText = computed(() => editorRef.value?.getTextContent?.() || '')
 
 let collaboration = null
 const ydoc = ref(null)
@@ -159,7 +182,6 @@ function handleExport(format) {
   }
 }
 
-// Auto-save: getContent extracts current title and editor plain text
 const { saveStatus, retryCount, scheduleSave, forceSave, resetError } = useAutoSave(
   route.params.id,
   () => {
@@ -178,6 +200,15 @@ function onTitleInput() {
   if (canEdit.value) {
     scheduleSave()
   }
+}
+
+function toggleVersions() {
+  showVersions.value = !showVersions.value
+  if (!showVersions.value) showDiff.value = false
+}
+
+function toggleDiff() {
+  showDiff.value = !showDiff.value
 }
 
 function onApprovalSubmitted() {
@@ -288,7 +319,6 @@ function handleVersionRestore() {
 .status-dot.connected { background: var(--success); }
 .collab-users {
   display: flex;
-  gap: -4px;
 }
 .user-avatar {
   width: 28px; height: 28px;
@@ -310,15 +340,25 @@ function handleVersionRestore() {
   flex: 1;
   overflow: hidden;
 }
-.editor-area { flex: 1; overflow-y: auto; background: white; }
+.editor-area {
+  flex: 1;
+  overflow-y: auto;
+  background: white;
+}
+.diff-area {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .version-panel-wrapper {
-  width: 320px;
+  width: 280px;
   border-left: 1px solid var(--gray-200);
   background: white;
   overflow-y: auto;
 }
-.approval-panel-wrapper {
-  width: 320px;
+.side-panel-wrapper {
+  width: 300px;
   border-left: 1px solid var(--gray-200);
   background: white;
   overflow-y: auto;
