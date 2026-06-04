@@ -25,6 +25,8 @@ const props = defineProps({
   readOnly: { type: Boolean, default: false }
 })
 
+const emit = defineEmits(['update'])
+
 const editor = useEditor({
   editable: !props.readOnly,
   extensions: [
@@ -37,7 +39,10 @@ const editor = useEditor({
       provider: props.provider,
       user: props.awareness?.getLocalState()?.user || { name: 'Anonymous', color: '#999' }
     })
-  ]
+  ],
+  onUpdate() {
+    emit('update')
+  }
 })
 
 watch(() => props.readOnly, (val) => {
@@ -48,7 +53,12 @@ onBeforeUnmount(() => {
   editor.value?.destroy()
 })
 
-defineExpose({ editor })
+function getTextContent() {
+  if (!editor.value) return ''
+  return editor.value.getText()
+}
+
+defineExpose({ editor, getTextContent })
 </script>
 
 <style>

@@ -5,12 +5,21 @@
         <button class="btn-secondary btn-sm" @click="$router.push('/')">← Back</button>
         <input
           class="title-input"
-          :value="doc.title"
-          @change="handleTitleChange"
+          v-model="docTitle"
+          @input="onTitleInput"
           :disabled="!canEdit"
         />
       </div>
       <div class="doc-header-right">
+        <div class="save-status" :class="saveStatus">
+          <span v-if="saveStatus === 'saved'" class="status-text">Saved</span>
+          <span v-else-if="saveStatus === 'saving'" class="status-text">Saving...</span>
+          <span v-else-if="saveStatus === 'unsaved'" class="status-text">Unsaved</span>
+          <span v-else-if="saveStatus === 'error'" class="status-text">
+            Save failed
+            <button class="retry-btn" @click="resetError">Retry</button>
+          </span>
+        </div>
         <div class="connection-status">
           <span class="status-dot" :class="{ connected: isConnected }"></span>
           {{ isConnected ? 'Connected' : 'Offline' }}
@@ -34,10 +43,12 @@
       <div class="editor-area">
         <DocumentEditor
           v-if="ydoc"
+          ref="editorRef"
           :ydoc="ydoc"
           :provider="wsProvider"
           :awareness="awareness"
           :readOnly="!canEdit"
+          @update="onEditorUpdate"
         />
       </div>
 
@@ -58,11 +69,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDocumentsStore } from '../stores/documents.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useCollaboration } from '../composables/useCollaboration.js'
+import { useAutoSave } from '../composables/useAutoSave.js'
 import DocumentEditor from '../components/editor/DocumentEditor.vue'
 import CommentSidebar from '../components/editor/CommentSidebar.vue'
 import VersionHistory from '../components/documents/VersionHistory.vue'
@@ -74,9 +86,11 @@ const docStore = useDocumentsStore()
 const authStore = useAuthStore()
 
 const doc = ref(null)
+const docTitle = ref('')
 const showComments = ref(false)
 const showVersions = ref(false)
 const showShare = ref(false)
+const editorRef = ref(null)
 
 const isOwner = computed(() => doc.value?.owner_id === authStore.user?.id)
 const canEdit = computed(() => {
@@ -95,38 +109,53 @@ const awareness = ref(null)
 const isConnected = ref(false)
 const connectedUsers = ref([])
 
+// Auto-save: getContent extracts current title and editor plain text
+const { saveStatus, retryCount, scheduleSave, forceSave, resetError } = useAutoSave(
+  route.params.id,
+  () => {
+    const text = editorRef.value?.getTextContent?.() || ''
+    return { title: docTitle.value || 'Untitled', text }
+  }
+)
+
+function onEditorUpdate() {
+  if (canEdit.value) {
+    scheduleSave()
+  }
+}
+
+function onTitleInput() {
+  if (canEdit.value) {
+    scheduleSave()
+  }
+}
+
+let statusInterval = null
+
 onMounted(async () => {
   try {
     doc.value = await docStore.fetchDocument(route.params.id)
+    docTitle.value = doc.value.title
+
     collaboration = useCollaboration(route.params.id)
     ydoc.value = collaboration.ydoc
     wsProvider.value = collaboration.wsProvider
     awareness.value = collaboration.awareness
-    isConnected.value = collaboration.isConnected
-    connectedUsers.value = collaboration.connectedUsers
 
-    // Watch reactive refs from composable
-    const stop1 = setInterval(() => {
+    statusInterval = setInterval(() => {
       isConnected.value = collaboration.isConnected.value
       connectedUsers.value = collaboration.connectedUsers.value
     }, 1000)
-
-    // Clean up on unmount handled by composable's onUnmounted
   } catch (err) {
     router.push('/')
   }
 })
 
-async function handleTitleChange(e) {
-  const newTitle = e.target.value.trim()
-  if (newTitle && newTitle !== doc.value.title) {
-    await docStore.updateTitle(doc.value.id, newTitle)
-    doc.value.title = newTitle
-  }
-}
+onUnmounted(() => {
+  if (statusInterval) clearInterval(statusInterval)
+})
 
 function handleVersionRestore() {
-  // Reload the page to get fresh Yjs state
   window.location.reload()
 }
 </script>
@@ -167,6 +196,26 @@ function handleVersionRestore() {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+.save-status {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+.save-status.saved { color: var(--success); }
+.save-status.saving { color: var(--warning); }
+.save-status.unsaved { color: var(--gray-400); }
+.save-status.error { color: var(--danger); }
+.retry-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0 0.25rem;
 }
 .connection-status {
   display: flex;
