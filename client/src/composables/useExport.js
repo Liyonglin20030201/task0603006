@@ -81,28 +81,61 @@ ${editor.getHTML()}
         codeBlockStyle: 'fenced',
         bulletListMarker: '-'
       })
-      turndown.addRule('taskList', {
-        filter: (node) => node.nodeName === 'LI' && node.parentNode?.getAttribute?.('data-type') === 'taskList',
+      turndown.addRule('taskListItem', {
+        filter: (node) => {
+          if (node.nodeName !== 'LI') return false
+          const parent = node.parentNode
+          return parent && (parent.getAttribute?.('data-type') === 'taskList' || parent.classList?.contains('contains-task-list'))
+        },
         replacement: (content, node) => {
           const checkbox = node.querySelector('input[type="checkbox"]')
           const checked = checkbox?.checked ? 'x' : ' '
-          return `- [${checked}] ${content.trim()}\n`
+          let text = content.replace(/^\s*\[[ x]\]\s*/i, '').trim()
+          text = text.replace(/^\n+/, '').replace(/\n+$/, '')
+          return `- [${checked}] ${text}\n`
         }
+      })
+      turndown.addRule('taskList', {
+        filter: (node) => {
+          if (node.nodeName !== 'UL') return false
+          return node.getAttribute?.('data-type') === 'taskList' || node.classList?.contains('contains-task-list')
+        },
+        replacement: (content) => `\n${content}\n`
       })
       turndown.addRule('table', {
         filter: 'table',
         replacement: (content, node) => {
-          const rows = node.querySelectorAll('tr')
+          const rows = Array.from(node.querySelectorAll('tr'))
           if (rows.length === 0) return content
+
+          const escapeCell = (text) => (text || '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim()
+
+          const hasHeaderRow = rows[0].querySelector('th') !== null
+          const headerRow = rows[0]
+          const bodyRows = hasHeaderRow ? rows.slice(1) : rows
+
+          const headerCells = Array.from(headerRow.querySelectorAll('td, th'))
+          const colCount = headerCells.length
+
           let md = '\n'
-          rows.forEach((row, idx) => {
-            const cells = row.querySelectorAll('td, th')
-            const line = Array.from(cells).map(c => c.textContent.trim()).join(' | ')
-            md += `| ${line} |\n`
-            if (idx === 0) {
-              md += `| ${Array.from(cells).map(() => '---').join(' | ')} |\n`
+
+          if (hasHeaderRow) {
+            md += `| ${headerCells.map(c => escapeCell(c.textContent)).join(' | ')} |\n`
+          } else {
+            md += `| ${headerCells.map(c => escapeCell(c.textContent)).join(' | ')} |\n`
+          }
+
+          md += `| ${Array.from({ length: colCount }, () => '---').join(' | ')} |\n`
+
+          for (const row of bodyRows) {
+            const cells = Array.from(row.querySelectorAll('td, th'))
+            const values = []
+            for (let i = 0; i < colCount; i++) {
+              values.push(escapeCell(cells[i]?.textContent || ''))
             }
-          })
+            md += `| ${values.join(' | ')} |\n`
+          }
+
           return md + '\n'
         }
       })

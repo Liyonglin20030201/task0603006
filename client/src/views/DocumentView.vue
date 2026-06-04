@@ -73,6 +73,7 @@
           :versions="versionsList"
           :currentText="currentEditorText"
           @close="showDiff = false"
+          @restore="handleVersionRestore"
         />
       </div>
 

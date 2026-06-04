@@ -28,9 +28,23 @@
           </select>
         </div>
       </div>
-      <div class="view-toggle">
-        <button :class="{ active: viewMode === 'unified' }" @click="viewMode = 'unified'">Unified</button>
-        <button :class="{ active: viewMode === 'split' }" @click="viewMode = 'split'">Split</button>
+      <div class="diff-actions">
+        <button
+          v-if="canRestoreA"
+          class="btn-restore"
+          @click="restoreA"
+          :disabled="restoring"
+        >{{ restoring ? 'Restoring...' : 'Restore Base Version' }}</button>
+        <button
+          v-if="canRestoreB"
+          class="btn-restore"
+          @click="restoreB"
+          :disabled="restoring"
+        >{{ restoring ? 'Restoring...' : 'Restore Compare Version' }}</button>
+        <div class="view-toggle">
+          <button :class="{ active: viewMode === 'unified' }" @click="viewMode = 'unified'">Unified</button>
+          <button :class="{ active: viewMode === 'split' }" @click="viewMode = 'split'">Split</button>
+        </div>
       </div>
     </div>
 
@@ -87,7 +101,7 @@ const props = defineProps({
   currentText: { type: String, default: '' }
 })
 
-defineEmits(['close'])
+const emit = defineEmits(['close', 'restore'])
 
 const { computeLineDiff } = useDiff()
 
@@ -96,6 +110,10 @@ const selectedB = ref('')
 const viewMode = ref('unified')
 const diffResult = ref([])
 const loading = ref(false)
+const restoring = ref(false)
+
+const canRestoreA = computed(() => selectedA.value && diffResult.value.length > 0)
+const canRestoreB = computed(() => selectedB.value && selectedB.value !== '__current__' && diffResult.value.length > 0)
 
 const addedCount = computed(() => diffResult.value.filter(l => l.type === 'added').length)
 const removedCount = computed(() => diffResult.value.filter(l => l.type === 'removed').length)
@@ -129,6 +147,34 @@ async function loadDiff() {
     diffResult.value = []
   } finally {
     loading.value = false
+  }
+}
+
+async function restoreA() {
+  if (!selectedA.value) return
+  if (!confirm('Restore to the base version? Current content will be saved as a new version first.')) return
+  restoring.value = true
+  try {
+    await documentsApi.restoreVersion(props.documentId, selectedA.value)
+    emit('restore')
+  } catch (err) {
+    console.error('Restore failed:', err)
+  } finally {
+    restoring.value = false
+  }
+}
+
+async function restoreB() {
+  if (!selectedB.value || selectedB.value === '__current__') return
+  if (!confirm('Restore to the compare version? Current content will be saved as a new version first.')) return
+  restoring.value = true
+  try {
+    await documentsApi.restoreVersion(props.documentId, selectedB.value)
+    emit('restore')
+  } catch (err) {
+    console.error('Restore failed:', err)
+  } finally {
+    restoring.value = false
   }
 }
 
@@ -206,6 +252,25 @@ const splitRight = computed(() => {
   gap: 0.5rem;
   flex: 1;
 }
+.diff-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.btn-restore {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid var(--primary);
+  background: white;
+  color: var(--primary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-restore:hover:not(:disabled) { background: var(--primary); color: white; }
+.btn-restore:disabled { opacity: 0.5; cursor: not-allowed; }
 .arrow {
   font-size: 1.1rem;
   color: var(--gray-400);
