@@ -100,7 +100,71 @@ async function migrate() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_yjs_updates_document ON yjs_updates(document_id);
+
+    CREATE TABLE IF NOT EXISTS templates (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'general',
+      content_json TEXT NOT NULL DEFAULT '{}',
+      content_text TEXT NOT NULL DEFAULT '',
+      is_system INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_templates_category ON templates(category);
+    CREATE INDEX IF NOT EXISTS idx_templates_created_by ON templates(created_by);
+
+    CREATE TABLE IF NOT EXISTS approval_requests (
+      id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+      requester_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      title TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL DEFAULT '',
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_approval_requests_document ON approval_requests(document_id);
+    CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON approval_requests(status);
+
+    CREATE TABLE IF NOT EXISTS approval_reviewers (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL REFERENCES approval_requests(id) ON DELETE CASCADE,
+      reviewer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      decision TEXT NOT NULL DEFAULT 'pending',
+      comment TEXT NOT NULL DEFAULT '',
+      decided_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_approval_reviewers_request ON approval_reviewers(request_id);
+    CREATE INDEX IF NOT EXISTS idx_approval_reviewers_reviewer ON approval_reviewers(reviewer_id);
+
+    CREATE TABLE IF NOT EXISTS uploads (
+      id TEXT PRIMARY KEY,
+      filename TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
+      uploaded_by TEXT NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_uploads_document ON uploads(document_id);
   `);
+
+  // Add approval_status column to documents if not exists
+  try {
+    db.exec("ALTER TABLE documents ADD COLUMN approval_status TEXT");
+  } catch (e) {
+    // Column already exists, ignore
+  }
 
   // Note: FTS5 not available in sql.js. Using LIKE-based search instead.
   console.log('Database migration completed successfully.');

@@ -25,6 +25,12 @@ async function startServer() {
   app.use('/api/documents', require('./routes/comments'));
   app.use('/api/notifications', require('./routes/notifications'));
   app.use('/api/search', require('./routes/search'));
+  app.use('/api/search/users', require('./routes/searchUsers'));
+  app.use('/api/templates', require('./routes/templates'));
+  app.use('/api/documents', require('./routes/approvals'));
+  app.use('/api/approvals', require('./routes/approvalActions'));
+  app.use('/api', require('./routes/uploads'));
+  app.use('/api/documents', require('./routes/exports'));
 
   // Health check
   app.get('/api/health', (req, res) => {

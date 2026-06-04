@@ -17,6 +17,7 @@ export const documentsApi = {
   createVersion(id) { return client.post(`/documents/${id}/versions`) },
   getVersion(id, versionId) { return client.get(`/documents/${id}/versions/${versionId}`) },
   restoreVersion(id, versionId) { return client.post(`/documents/${id}/versions/${versionId}/restore`) },
+  compareVersions(docId, versionIdA, versionIdB) { return client.get(`/documents/${docId}/versions/compare`, { params: { a: versionIdA, b: versionIdB } }) },
 
   // Shares
   listShares(id) { return client.get(`/documents/${id}/shares`) },

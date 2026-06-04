@@ -41,6 +41,16 @@ const routes = [
         path: 'documents/:id',
         name: 'Document',
         component: () => import('../views/DocumentView.vue')
+      },
+      {
+        path: 'templates',
+        name: 'Templates',
+        component: () => import('../views/TemplatesView.vue')
+      },
+      {
+        path: 'approvals',
+        name: 'Approvals',
+        component: () => import('../views/ApprovalsView.vue')
       }
     ]
   }

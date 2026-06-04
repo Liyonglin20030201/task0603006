@@ -1,14 +1,21 @@
 <template>
   <div class="editor-container" v-if="editor">
-    <EditorToolbar :editor="editor" />
+    <EditorToolbar :editor="editor" @insert-image="showImageDialog = true" />
     <div class="editor-wrapper">
       <editor-content :editor="editor" class="editor-content" />
     </div>
+    <ImageUploadDialog
+      v-if="showImageDialog"
+      :visible="showImageDialog"
+      :documentId="documentId"
+      :editor="editor"
+      @close="showImageDialog = false"
+    />
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, watch } from 'vue'
+import { ref, onBeforeUnmount, watch } from 'vue'
 import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
@@ -16,16 +23,28 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import Highlight from '@tiptap/extension-highlight'
 import Underline from '@tiptap/extension-underline'
 import Placeholder from '@tiptap/extension-placeholder'
+import Image from '@tiptap/extension-image'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
+import Link from '@tiptap/extension-link'
+import VideoEmbed from '../../extensions/VideoEmbed.js'
 import EditorToolbar from './EditorToolbar.vue'
+import ImageUploadDialog from './ImageUploadDialog.vue'
 
 const props = defineProps({
   ydoc: Object,
   provider: Object,
   awareness: Object,
+  documentId: String,
   readOnly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update'])
+const showImageDialog = ref(false)
 
 const editor = useEditor({
   editable: !props.readOnly,
@@ -34,6 +53,15 @@ const editor = useEditor({
     Highlight,
     Underline,
     Placeholder.configure({ placeholder: 'Start typing...' }),
+    Image.configure({ inline: false, allowBase64: true }),
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableCell,
+    TableHeader,
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    Link.configure({ openOnClick: false }),
+    VideoEmbed,
     Collaboration.configure({ document: props.ydoc }),
     CollaborationCursor.configure({
       provider: props.provider,
@@ -115,6 +143,61 @@ defineExpose({ editor, getTextContent })
 }
 .editor-content .ProseMirror mark {
   background: #fef08a;
+}
+.editor-content .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+  cursor: default;
+}
+.editor-content .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--primary);
+}
+.editor-content .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0;
+}
+.editor-content .ProseMirror table td,
+.editor-content .ProseMirror table th {
+  border: 1px solid var(--gray-300);
+  padding: 0.5rem;
+  min-width: 80px;
+  vertical-align: top;
+}
+.editor-content .ProseMirror table th {
+  background: var(--gray-100);
+  font-weight: 600;
+}
+.editor-content .ProseMirror table .selectedCell {
+  background: rgba(var(--primary-rgb, 59, 130, 246), 0.1);
+}
+.editor-content .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.editor-content .ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.editor-content .ProseMirror ul[data-type="taskList"] li label {
+  margin-top: 0.25rem;
+}
+.editor-content .ProseMirror ul[data-type="taskList"] li label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.editor-content .ProseMirror .video-embed-wrapper {
+  margin: 1rem 0;
+  text-align: center;
+}
+.editor-content .ProseMirror a {
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
 }
 /* Collaboration cursors */
 .collaboration-cursor__caret {

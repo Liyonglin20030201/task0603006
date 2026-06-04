@@ -33,9 +33,21 @@
             :title="u.name"
           >{{ u.name?.charAt(0) }}</span>
         </div>
+        <div class="export-btn-wrapper">
+          <button class="btn-secondary btn-sm" @click="showExport = !showExport">Export</button>
+          <ExportMenu
+            :visible="showExport"
+            :exporting="exporting"
+            @close="showExport = false"
+            @export="handleExport"
+          />
+        </div>
         <button class="btn-secondary btn-sm" @click="showVersions = !showVersions">Versions</button>
         <button class="btn-secondary btn-sm" @click="showComments = !showComments">Comments</button>
         <button v-if="isOwner" class="btn-secondary btn-sm" @click="showShare = true">Share</button>
+        <button v-if="isOwner" class="btn-secondary btn-sm" @click="showApproval = !showApproval">Approval</button>
+        <button v-if="isOwner" class="btn-secondary btn-sm" @click="showSubmitApproval = true">Submit</button>
+        <button class="btn-secondary btn-sm" @click="showSaveTemplate = true">Save Template</button>
       </div>
     </div>
 
@@ -47,6 +59,7 @@
           :ydoc="ydoc"
           :provider="wsProvider"
           :awareness="awareness"
+          :documentId="doc.id"
           :readOnly="!canEdit"
           @update="onEditorUpdate"
         />
@@ -61,9 +74,26 @@
       <div v-if="showVersions" class="version-panel-wrapper">
         <VersionHistory :documentId="doc.id" @restored="handleVersionRestore" />
       </div>
+
+      <div v-if="showApproval" class="approval-panel-wrapper">
+        <ApprovalPanel :documentId="doc.id" />
+      </div>
     </div>
 
     <ShareDialog v-if="showShare" :document="doc" @close="showShare = false" />
+    <SaveAsTemplateDialog
+      :visible="showSaveTemplate"
+      :documentId="doc.id"
+      @close="showSaveTemplate = false"
+      @saved="showSaveTemplate = false"
+    />
+    <SubmitApprovalDialog
+      :visible="showSubmitApproval"
+      :documentId="doc.id"
+      :documentTitle="docTitle"
+      @close="showSubmitApproval = false"
+      @submitted="onApprovalSubmitted"
+    />
   </div>
   <div v-else class="loading">Loading document...</div>
 </template>
@@ -75,10 +105,15 @@ import { useDocumentsStore } from '../stores/documents.js'
 import { useAuthStore } from '../stores/auth.js'
 import { useCollaboration } from '../composables/useCollaboration.js'
 import { useAutoSave } from '../composables/useAutoSave.js'
+import { useExport } from '../composables/useExport.js'
 import DocumentEditor from '../components/editor/DocumentEditor.vue'
 import CommentSidebar from '../components/editor/CommentSidebar.vue'
+import ExportMenu from '../components/editor/ExportMenu.vue'
 import VersionHistory from '../components/documents/VersionHistory.vue'
 import ShareDialog from '../components/documents/ShareDialog.vue'
+import SaveAsTemplateDialog from '../components/templates/SaveAsTemplateDialog.vue'
+import SubmitApprovalDialog from '../components/approvals/SubmitApprovalDialog.vue'
+import ApprovalPanel from '../components/approvals/ApprovalPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -90,6 +125,10 @@ const docTitle = ref('')
 const showComments = ref(false)
 const showVersions = ref(false)
 const showShare = ref(false)
+const showExport = ref(false)
+const showApproval = ref(false)
+const showSubmitApproval = ref(false)
+const showSaveTemplate = ref(false)
 const editorRef = ref(null)
 
 const isOwner = computed(() => doc.value?.owner_id === authStore.user?.id)
@@ -108,6 +147,17 @@ const wsProvider = ref(null)
 const awareness = ref(null)
 const isConnected = ref(false)
 const connectedUsers = ref([])
+
+const { exporting, exportHtml, exportText, exportMarkdown, exportPdf } = useExport(editorRef, docTitle)
+
+function handleExport(format) {
+  switch (format) {
+    case 'html': exportHtml(); break
+    case 'text': exportText(); break
+    case 'markdown': exportMarkdown(); break
+    case 'pdf': exportPdf(); break
+  }
+}
 
 // Auto-save: getContent extracts current title and editor plain text
 const { saveStatus, retryCount, scheduleSave, forceSave, resetError } = useAutoSave(
@@ -128,6 +178,11 @@ function onTitleInput() {
   if (canEdit.value) {
     scheduleSave()
   }
+}
+
+function onApprovalSubmitted() {
+  showSubmitApproval.value = false
+  showApproval.value = true
 }
 
 let statusInterval = null
@@ -195,7 +250,8 @@ function handleVersionRestore() {
 .doc-header-right {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 .save-status {
   font-size: 0.75rem;
@@ -246,6 +302,9 @@ function handleVersionRestore() {
   border: 2px solid white;
   margin-left: -4px;
 }
+.export-btn-wrapper {
+  position: relative;
+}
 .doc-body {
   display: flex;
   flex: 1;
@@ -253,6 +312,12 @@ function handleVersionRestore() {
 }
 .editor-area { flex: 1; overflow-y: auto; background: white; }
 .version-panel-wrapper {
+  width: 320px;
+  border-left: 1px solid var(--gray-200);
+  background: white;
+  overflow-y: auto;
+}
+.approval-panel-wrapper {
   width: 320px;
   border-left: 1px solid var(--gray-200);
   background: white;

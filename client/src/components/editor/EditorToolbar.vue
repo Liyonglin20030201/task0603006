@@ -55,6 +55,11 @@
         title="Ordered List"
       >OL</button>
       <button
+        @click="editor.chain().focus().toggleTaskList().run()"
+        :class="{ active: editor.isActive('taskList') }"
+        title="Task List"
+      >TL</button>
+      <button
         @click="editor.chain().focus().toggleBlockquote().run()"
         :class="{ active: editor.isActive('blockquote') }"
         title="Blockquote"
@@ -67,6 +72,13 @@
     </div>
 
     <div class="toolbar-group">
+      <button @click="insertTable" title="Insert Table">TBL</button>
+      <button @click="$emit('insert-image')" title="Insert Image">IMG</button>
+      <button @click="insertLink" title="Insert Link">LNK</button>
+      <button @click="insertVideo" title="Insert Video">VID</button>
+    </div>
+
+    <div class="toolbar-group">
       <button @click="editor.chain().focus().setHorizontalRule().run()" title="Horizontal Rule">HR</button>
       <button @click="editor.chain().focus().undo().run()" title="Undo">↩</button>
       <button @click="editor.chain().focus().redo().run()" title="Redo">↪</button>
@@ -75,7 +87,35 @@
 </template>
 
 <script setup>
-defineProps({ editor: Object })
+const props = defineProps({ editor: Object })
+const emit = defineEmits(['insert-image'])
+
+function insertTable() {
+  props.editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+}
+
+function insertLink() {
+  const url = prompt('Enter URL:')
+  if (url) {
+    props.editor.chain().focus().setLink({ href: url }).run()
+  }
+}
+
+function insertVideo() {
+  const url = prompt('Enter video URL (YouTube/Vimeo embed URL):')
+  if (url) {
+    let embedUrl = url
+    const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/)
+    if (youtubeMatch) {
+      embedUrl = `https://www.youtube.com/embed/${youtubeMatch[1]}`
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(\d+)/)
+    if (vimeoMatch) {
+      embedUrl = `https://player.vimeo.com/video/${vimeoMatch[1]}`
+    }
+    props.editor.commands.setVideoEmbed({ src: embedUrl })
+  }
+}
 </script>
 
 <style scoped>

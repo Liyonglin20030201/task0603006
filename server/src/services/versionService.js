@@ -58,4 +58,20 @@ function restoreVersion(documentId, versionId, userId) {
   return { message: 'Version restored', version_number: version.version_number };
 }
 
-module.exports = { list, create, getVersion, restoreVersion };
+function compareVersions(documentId, versionIdA, versionIdB, userId) {
+  documentService.checkAccess(documentId, userId, 'view');
+  const versionA = db.prepare(`
+    SELECT v.*, u.display_name as created_by_name
+    FROM document_versions v JOIN users u ON u.id = v.created_by
+    WHERE v.id = ? AND v.document_id = ?
+  `).get(versionIdA, documentId);
+  const versionB = db.prepare(`
+    SELECT v.*, u.display_name as created_by_name
+    FROM document_versions v JOIN users u ON u.id = v.created_by
+    WHERE v.id = ? AND v.document_id = ?
+  `).get(versionIdB, documentId);
+  if (!versionA || !versionB) throw new NotFoundError('Version not found');
+  return { versionA, versionB };
+}
+
+module.exports = { list, create, getVersion, restoreVersion, compareVersions };
